@@ -2,7 +2,10 @@ use serde_json::{json, Value};
 use tungstenite::{WebSocket, connect, Message, stream::MaybeTlsStream};
 use std::net::TcpStream;
 use url::Url;
-use crate::KuCoinAPI::orderbook::orderbook;
+use std::time::Instant;
+use std::time::Duration;
+use std::process;
+use crate::ku_coin_api::orderbook::Orderbook;
 
 // basic websocket
 pub struct KuCoinSession {
@@ -41,23 +44,42 @@ impl KuCoinSession
         });
 
         self.sk.send(Message::Text(msg.to_string().into()))
-        .expect("Failed to send message");
+            .expect("Failed to send message");
     }
 
     // pings the server to keep the connection alive and then waits for an orderbook update
-    // could probably handle receiving pongs and sending pings using the timeout function in the api in a thread,
-    // but seems really annoying to implement
-    // TODO: make this not have a loop in it lol
-    pub fn update(&mut self) -> orderbook
+    // automatically times out if nothing received in 5 seconds
+    // could probably handle receiving pongs but seems really annoying to implement
+    // TODO: handle ping timeout better by using tokio to split up read and write. Also actually look for pongs
+    pub fn update(&mut self, timeout: u64) -> Orderbook
     {
+        let ping_interval = Duration::from_millis(timeout);
         let ping_msg = json!({ "id": 1, "type": "ping" });
 
         self.sk.send(Message::Text(ping_msg.to_string().into()))
             .expect("Failed to send ping");
+        
+        let mut last_ping = Instant::now();
+        let mut last_read = Instant::now();
 
         loop
         {
+            if last_ping.elapsed() >= ping_interval 
+            {
+                self.sk.send(Message::Text(ping_msg.to_string().into()))
+                    .expect("Failed to resend ping");
+                last_ping = Instant::now();
+            }
+
+            if last_read.elapsed() >= Duration::from_millis(50000)
+            {
+                eprintln!("Error: Read operation took too long, exiting.");
+                process::exit(1);
+            }
+
             let msg_str = self.sk.read().expect("Failed to read message");
+            last_read = Instant::now();
+
             if let Message::Text(text) = msg_str 
             {
                 let msg: Value = serde_json::from_str(&text).expect("Failed to parse message");
@@ -68,7 +90,7 @@ impl KuCoinSession
 
                     if data.get("asks").is_some() && data.get("bids").is_some() 
                     {
-                        return orderbook::getBook(data.clone());
+                        return Orderbook::get_book(data.clone());
                     } 
                 }
             }

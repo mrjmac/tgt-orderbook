@@ -1,11 +1,11 @@
-mod KuCoinAPI;
-use crate::KuCoinAPI::session::KuCoinSession;
+mod ku_coin_api;
+use crate::ku_coin_api::session::KuCoinSession;
 use serde_json::Value;
 
-// method to get token from the api as outlined in 
+// method to get token and timeout time from the api as outlined in 
 // https://www.kucoin.com/docs/websocket/basic-info/apply-connect-token/public-token-no-authentication-required-
 
-pub fn get_token() -> String
+pub fn get_token() -> (String, u64)
 {
     let client = reqwest::blocking::Client::new();
     let res: Value = client
@@ -24,15 +24,19 @@ pub fn get_token() -> String
         .as_str()
         .expect("Missing endpoint")
         .to_string();
+    
+    let timeout = res["data"]["instanceServers"][0]["pingInterval"]
+        .as_u64()
+        .expect("Missing or invalid pingInterval");
 
-    // return as string
-    format!("{}?token={}", endpoint, token)
+    // return token as string
+    (format!("{}?token={}", endpoint, token), timeout)
 }
 
 fn main() 
 {
     // get our token
-    let url = get_token();
+    let (url, timeout) = get_token();
     // get a client connection
     let mut client = KuCoinSession::connect(&url);
 
@@ -41,7 +45,7 @@ fn main()
 
     loop 
     {
-        let orderbook = client.update();
+        let orderbook = client.update(timeout);
         println!("{}", orderbook)
     }
 }
