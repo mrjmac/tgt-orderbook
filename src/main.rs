@@ -1,9 +1,11 @@
-use reqwest;
+mod KuCoinAPI;
+use crate::KuCoinAPI::session::KuCoinSession;
 use serde_json::Value;
-use tungstenite::{connect, Message};
-use url::Url;
 
-fn get_token() -> (String, String) 
+// method to get token from the api as outlined in 
+// https://www.kucoin.com/docs/websocket/basic-info/apply-connect-token/public-token-no-authentication-required-
+
+pub fn get_token() -> String
 {
     let client = reqwest::blocking::Client::new();
     let res: Value = client
@@ -12,7 +14,7 @@ fn get_token() -> (String, String)
         .expect("Failed to send request")
         .json()
         .expect("Failed to parse JSON response");
-    
+        
     let token = res["data"]["token"]
         .as_str()
         .expect("Missing token")
@@ -23,39 +25,27 @@ fn get_token() -> (String, String)
         .expect("Missing endpoint")
         .to_string();
 
-    (token, endpoint)
+    // return as string
+    format!("{}?token={}", endpoint, token)
 }
 
 fn main() 
 {
-    let (token, endpoint) = get_token();
-    let url = format!("{}?token={}", endpoint, token);
-    let (mut socket, _response) = connect(Url::parse(&url).expect("Invalid WebSocket URL").to_string())
-        .expect("Failed to connect");
-    
-    let welcome_msg = socket.read().expect("Failed to read message");
-    if let Message::Text(text) = welcome_msg {
-        let json: Value = serde_json::from_str(&text).expect("Failed to parse JSON");
-        assert_eq!(json["type"].as_str(), Some("welcome"));
-        println!("{:?}", json);
-    }
-    
-    let subscribe_msg = serde_json::json!({
-        "id": 1,
-        "type": "subscribe",
-        "topic": "/contractMarket/level2Depth5:ETHUSDTM",
-        "privateChannel": false,
-        "response": false
-    });
-    
-    socket.send(Message::Text(subscribe_msg.to_string().into()))
-        .expect("Failed to send message");
-    
-    loop {
-        let msg = socket.read().expect("Failed to read message");
-        if let Message::Text(text) = msg {
-            let json: Value = serde_json::from_str(&text).expect("Failed to parse JSON");
-            println!("{:?}", json);
+    // get our token
+    let url = get_token();
+    // get a client connection
+    let mut client = KuCoinSession::connect(&url);
+
+    // subscribe our client to requested exchange
+    client.subscribe("ETHUSDTM");
+
+    loop 
+    {
+        // update client with error handling
+        match client.update() {
+            Ok(Some(order_book)) => println!("{}", order_book),
+            Ok(None) => println!("No new order book update."),
+            Err(err) => eprintln!("Error fetching order book: {}", err),
         }
     }
 }
