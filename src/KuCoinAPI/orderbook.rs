@@ -1,11 +1,12 @@
-use std::fmt;
-use std::fmt::Display;
+use std::fmt::{self, Display};
 
+// contains 5 most recent bids and asks
 pub struct orderbook {
     asks: [(f64, u64); 5],
     bids: [(f64, u64); 5],
 }
 
+// toString method for printing orderbook
 impl Display for orderbook 
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result 
@@ -29,6 +30,7 @@ impl Display for orderbook
 
 impl orderbook {
 
+    // returns 5 most recent values from passed in json
     fn update(msg: &serde_json::Value) -> [(f64, u64); 5] 
     {
         let data = msg
@@ -66,6 +68,7 @@ impl orderbook {
         ans
     }
 
+    // parses asks and bids into our orderbook
     pub fn getBook(data: serde_json::Value) -> Self
     {
         let asks = data.get("asks").expect("asks not found");

@@ -41,11 +41,7 @@ fn main()
 
     loop 
     {
-        // update client with error handling
-        match client.update() {
-            Ok(Some(order_book)) => println!("{}", order_book),
-            Ok(None) => println!("No new order book update."),
-            Err(err) => eprintln!("Error fetching order book: {}", err),
-        }
+        let orderbook = client.update();
+        println!("{}", orderbook)
     }
 }
